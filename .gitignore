@@ -1,0 +1,4 @@
+.ssh/id_ed25519
+
+# training artefacts: history.csv/json, train.log, one dir per run
+/logs/
