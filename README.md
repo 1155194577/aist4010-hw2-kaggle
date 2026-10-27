@@ -23,10 +23,14 @@ the `aa_alphabet` hashmap from config. Provides `Tokenizer`, `ProteinDataset`,
 Here contain the training loop. Prints a progress line every 10% of an epoch
 (`--log-every N` to change), one line per epoch, and one final JSON line.
 
+The learning rate follows `--scheduler linear|cosine|none` (default `linear`)
+with a `--warmup-frac` ramp at the start; the schedule is stepped once per batch,
+and the per-epoch `lr` column in `history.csv` is the rate the epoch started at.
+
 ## model.py
 
-Here contain the absolute baseline model (a single-conv CNN + masked mean
-pooling), plus `resolve_device()` which maps `--device auto` to cuda / mps / cpu.
+Dilated 1-D CNN (`ConvBlock` stack over residue embeddings, masked mean pooling)
+plus `resolve_device()`, which maps `--device auto` to cuda / mps / cpu.
 
 ## logging_utils.py
 

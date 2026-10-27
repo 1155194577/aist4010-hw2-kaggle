@@ -28,6 +28,7 @@ class BasicCNN(nn.Module):
             ConvBlock(m.widths[0], m.widths[1], m.kernels[1], m.dilations[1]),
             ConvBlock(m.widths[1], m.widths[2], m.kernels[2], m.dilations[2]),
         )
+        self.head = nn.Linear(m.widths[-1], num_labels)   # in = last block width
         
 
     def forward(self, input_ids, attention_mask):

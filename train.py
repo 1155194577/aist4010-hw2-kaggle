@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import math
 import time
 from pathlib import Path
 
@@ -14,7 +15,34 @@ from logging_utils import TrainingLogger
 from model import build_model, resolve_device
 
 
-def train_one_epoch(model, loader, optimizer, cfg, device, epoch: int, log=None) -> float:
+def build_scheduler(optimizer, cfg, total_steps: int):
+    """Linear warmup then linear or cosine decay, stepped once per batch.
+
+    ``cfg.train.scheduler == "none"`` returns None, i.e. a constant LR.
+    ``warmup_frac`` is a fraction of *all* training steps, so the ramp is
+    0 -> lr over the first ``warmup_frac * epochs`` epochs.
+    """
+    name = cfg.train.scheduler
+    if name == "none":
+        return None
+
+    total_steps = max(1, total_steps)
+    warmup = max(1, min(total_steps, int(round(cfg.train.warmup_frac * total_steps))))
+    span = max(1, total_steps - warmup)
+
+    def lr_lambda(step: int) -> float:
+        if step < warmup:                        # 1/warmup .. 1
+            return (step + 1) / warmup
+        progress = min(1.0, (step - warmup) / span)
+        if name == "cosine":
+            return 0.5 * (1.0 + math.cos(math.pi * progress))
+        return max(0.0, 1.0 - progress)          # linear
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+
+def train_one_epoch(model, loader, optimizer, cfg, device, epoch: int, log=None,
+                    scheduler=None) -> float:
     model.train()
     total_loss, seen = 0.0, 0
     steps = len(loader)
@@ -32,6 +60,8 @@ def train_one_epoch(model, loader, optimizer, cfg, device, epoch: int, log=None)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.train.grad_clip)
         optimizer.step()
+        if scheduler is not None:
+            scheduler.step()                     # per batch, after the update
 
         total_loss += loss.item() * batch["labels"].size(0)
         seen += batch["labels"].size(0)
@@ -94,13 +124,25 @@ def main() -> None:
     )
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=t.lr, weight_decay=t.weight_decay)
+    total_steps = max(1, t.epochs * len(train_loader))
+    scheduler = build_scheduler(optimizer, cfg, total_steps)
+    if scheduler is not None:
+        warmup = max(1, int(round(t.warmup_frac * total_steps)))
+        log.info(
+            f"lr sched  {t.scheduler}  warmup={warmup}/{total_steps} steps  "
+            f"({warmup / max(len(train_loader), 1):.1f} epochs)  peak lr={t.lr:g}"
+        )
+    else:
+        log.info(f"lr sched  none  constant lr={t.lr:g}")
     t.save_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = t.save_dir / f"{cfg.model.arch}{'_' + t.tag if t.tag else ''}_best.pt"
 
     best_f1 = -1.0
     for epoch in range(1, t.epochs + 1):
         started = time.time()
-        train_loss = train_one_epoch(model, train_loader, optimizer, cfg, device, epoch, log=log)
+        epoch_lr = optimizer.param_groups[0]["lr"]     # LR used at the start of the epoch
+        train_loss = train_one_epoch(model, train_loader, optimizer, cfg, device, epoch,
+                                     log=log, scheduler=scheduler)
         eval_loss, f1 = evaluate(model, eval_loader, cfg, device)
 
         improved = f1 > best_f1
@@ -111,7 +153,7 @@ def main() -> None:
         log.epoch(
             epoch, t.epochs,
             {"train_loss": train_loss, "eval_loss": eval_loss, "macro_f1": f1,
-             "lr": optimizer.param_groups[0]["lr"]},
+             "lr": epoch_lr},
             best=improved, seconds=time.time() - started,
         )
         if improved:
