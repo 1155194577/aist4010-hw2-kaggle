@@ -27,6 +27,12 @@ The learning rate follows `--scheduler linear|cosine|none` (default `linear`)
 with a `--warmup-frac` ramp at the start; the schedule is stepped once per batch,
 and the per-epoch `lr` column in `history.csv` is the rate the epoch started at.
 
+Training stops early with `--early-stop-patience N` (default 0 = off): if eval
+macro-F1 has not improved by more than `--early-stop-min-delta` for N epochs the
+run ends, and `summary.json` records `best_epoch`, `epochs_run` and
+`stopped_early`. The checkpoint is always the best-F1 epoch, so stopping early
+never makes the saved model worse.
+
 ## model.py
 
 Dilated 1-D CNN (`ConvBlock` stack over residue embeddings, masked mean pooling)

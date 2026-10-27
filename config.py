@@ -157,6 +157,10 @@ class TrainConfig:
     num_workers: int = 0
     log_every: int = 0         # 0 = auto (every step on tiny runs, else silent)
 
+    # Stop when eval macro-F1 stops improving. 0 = never stop early.
+    early_stop_patience: int = 0
+    early_stop_min_delta: float = 0.0
+
     save: bool = True
     save_dir: Path = ROOT / "checkpoints"
     tag: str = ""              # appended to checkpoint names, e.g. --tag v2
@@ -178,6 +182,10 @@ class TrainConfig:
             raise ValueError("epochs and batch_size must be >= 1")
         if self.lr <= 0:
             raise ValueError("lr must be > 0")
+        if self.early_stop_patience < 0:
+            raise ValueError("early_stop_patience must be >= 0 (0 = disabled)")
+        if self.early_stop_min_delta < 0:
+            raise ValueError("early_stop_min_delta must be >= 0")
 
 
 # --------------------------------------------------------------------------- #

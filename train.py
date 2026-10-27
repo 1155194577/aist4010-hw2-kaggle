@@ -138,6 +138,17 @@ def main() -> None:
     checkpoint = t.save_dir / f"{cfg.model.arch}{'_' + t.tag if t.tag else ''}_best.pt"
 
     best_f1 = -1.0
+    best_epoch = 0
+    stale = 0                     # epochs since the last meaningful improvement
+    stopped_early = False
+    if t.early_stop_patience and t.scheduler != "none":
+        log.warn(
+            f"early stopping is on (patience={t.early_stop_patience}) but the "
+            f"{t.scheduler} schedule is sized for all {t.epochs} epochs; if it "
+            f"triggers, the LR will not reach its floor"
+        )
+
+    epoch = 0
     for epoch in range(1, t.epochs + 1):
         started = time.time()
         epoch_lr = optimizer.param_groups[0]["lr"]     # LR used at the start of the epoch
@@ -145,10 +156,13 @@ def main() -> None:
                                      log=log, scheduler=scheduler)
         eval_loss, f1 = evaluate(model, eval_loader, cfg, device)
 
-        improved = f1 > best_f1
+        improved = f1 > best_f1 + t.early_stop_min_delta
         if improved:
-            best_f1 = f1
+            best_f1, best_epoch = f1, epoch
+            stale = 0
             torch.save({"model_state": model.state_dict(), "config": cfg.to_dict()}, checkpoint)
+        else:
+            stale += 1
 
         log.epoch(
             epoch, t.epochs,
@@ -159,7 +173,21 @@ def main() -> None:
         if improved:
             log.checkpoint(best_f1, checkpoint)
 
-    log.finish({"best_macro_f1": round(float(best_f1), 4)})
+        if t.early_stop_patience and stale >= t.early_stop_patience:
+            log.warn(
+                f"early stop at epoch {epoch}: macro_f1 has not beaten "
+                f"{best_f1:.4f} (+{t.early_stop_min_delta:g}) for {stale} epoch(s); "
+                f"best checkpoint is epoch {best_epoch}"
+            )
+            stopped_early = True
+            break
+
+    log.finish({
+        "best_macro_f1": round(float(best_f1), 4),
+        "best_epoch": best_epoch,
+        "epochs_run": epoch,
+        "stopped_early": stopped_early,
+    })
 
 
 if __name__ == "__main__":
