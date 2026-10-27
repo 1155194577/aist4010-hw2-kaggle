@@ -23,11 +23,6 @@ class BasicCNN(nn.Module):
     def __init__(self, vocab_size: int, num_labels: int, m: ModelConfig):
         super().__init__()
         self.emb = nn.Embedding(vocab_size, m.emb_dim, padding_idx=PAD)
-        # Single standard convolution 
-        self.conv = nn.Conv1d(m.emb_dim, m.emb_dim, kernel_size=5, padding=2)
-        # Direct linear head to labels (input = last block width, not emb_dim)
-        self.head = nn.Linear(m.widths[-1], num_labels)
-
         self.blocks = nn.Sequential(
             ConvBlock(m.emb_dim,   m.widths[0], m.kernels[0], m.dilations[0]),
             ConvBlock(m.widths[0], m.widths[1], m.kernels[1], m.dilations[1]),
