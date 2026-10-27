@@ -40,6 +40,13 @@ fail.
 CSE Slurm batch script that runs `train.py` on a GPU node inside the PyTorch
 singularity image (below).
 
+## plot_history.py
+
+`python plot_history.py` plots `train_loss` and `eval_loss` from the newest
+`logs/*/history.csv` into `logs/<run>/loss.png`. Pillow only, no matplotlib.
+`--run <dir>` picks a specific run, `--out <file.png>` the output path (works
+after `./submit.sh --fetch`, since it reads the fetched CSV).
+
 ## predict.py
 
 Loads the newest `checkpoints/*_best.pt`, runs it over `data/test.fasta` and

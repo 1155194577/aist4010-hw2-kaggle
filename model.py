@@ -6,6 +6,16 @@ import torch.nn.functional as F
 from config import Config, ModelConfig
 
 PAD = 0
+class ConvBlock(nn.Module):
+    """conv (length-preserving) -> activation"""
+
+    def __init__(self, cin: int, cout: int, kernel: int, dilation: int):
+        super().__init__()
+        pad = dilation * (kernel - 1) // 2          # keeps L unchanged
+        self.conv = nn.Conv1d(cin, cout, kernel, padding=pad, dilation=dilation)
+
+    def forward(self, x):
+        return F.relu(self.conv(x))
 
 class BasicCNN(nn.Module):
     """The absolute bare-minimum CNN baseline"""
@@ -15,22 +25,30 @@ class BasicCNN(nn.Module):
         self.emb = nn.Embedding(vocab_size, m.emb_dim, padding_idx=PAD)
         # Single standard convolution 
         self.conv = nn.Conv1d(m.emb_dim, m.emb_dim, kernel_size=5, padding=2)
-        # Direct linear head to labels
-        self.head = nn.Linear(m.emb_dim, num_labels)
+        # Direct linear head to labels (input = last block width, not emb_dim)
+        self.head = nn.Linear(m.widths[-1], num_labels)
+
+        self.blocks = nn.Sequential(
+            ConvBlock(m.emb_dim,   m.widths[0], m.kernels[0], m.dilations[0]),
+            ConvBlock(m.widths[0], m.widths[1], m.kernels[1], m.dilations[1]),
+            ConvBlock(m.widths[1], m.widths[2], m.kernels[2], m.dilations[2]),
+        )
+        
 
     def forward(self, input_ids, attention_mask):
         # 1. Embed and transpose for Conv1d: (B, L) -> (B, L, C) -> (B, C, L)
         x = self.emb(input_ids).transpose(1, 2)
         
-        # 2. Single conv + activation
-        x = F.relu(self.conv(x))
         
+        x = self.blocks(x)
         # 3. Simple masked mean pooling over non-pad positions
         mask = attention_mask.unsqueeze(1)               # (B, 1, L)
         denom = mask.sum(dim=2).clamp(min=1)
         pooled = (x * mask).sum(dim=2) / denom           # (B, C)
         
         # 4. Final projection to class logits
+
+        # TODO : does dropout do anything? 
         return self.head(pooled)
 
 

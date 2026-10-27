@@ -2,3 +2,15 @@
 
 # training artefacts: history.csv/json, train.log, one dir per run
 /logs/
+
+# python bytecode
+*.pyc
+__pycache__/
+
+# macOS
+.DS_Store
+
+# trained weights and the generated Kaggle file
+*.pt
+/checkpoints/
+submission.csv

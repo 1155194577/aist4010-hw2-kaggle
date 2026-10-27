@@ -73,6 +73,7 @@ def main() -> None:
 
     tokenizer = Tokenizer(d.aa_alphabet)
     model = build_model(cfg, tokenizer.vocab_size, device)
+    print(model)
     params = sum(p.numel() for p in model.parameters())
 
     train_seqs, train_labels, _ = load_split(cfg, "train", d.limit, t.seed)
